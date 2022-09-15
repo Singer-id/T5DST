@@ -31,9 +31,16 @@ for domain_slot in ontology:
     ontology[domain_slot]["question"] = f"What is the {slot} of the {domain} that the user in interested in?"
 
 # text2
+'''
+-change -generate 0->1
+        -delete   1->0
+        -replace  1->1'
+-remain           0->0 and 1->1     
+'''
 for domain_slot in ontology:
     domain, slot = domain_slot.split("-")
-    ontology[domain_slot]["text2"] = f"Does the value of {slot} of the {domain} change? Choose Yes or No."
+    # ontology[domain_slot]["text2"] = f"Does the value of {slot} of the {domain} change? Choose Yes or No."  # first commit
+    ontology[domain_slot]["text2"] = f"What is the status of the {slot} of the {domain}? Choose generate, delete, replace or remain."
 
 # Slot Type
 for domain_slot in ontology:
