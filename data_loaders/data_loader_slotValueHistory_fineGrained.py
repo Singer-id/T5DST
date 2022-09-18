@@ -159,21 +159,21 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
 
                         if args["slot_lang"]=="human":
                             slot_lang = description[slot]["description_human"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}?"
                         elif args["slot_lang"]=="naive":
                             slot_lang = description[slot]["naive"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}?"
                         elif args["slot_lang"]=="value":
                             slot_lang = description[slot]["naive"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}"
                         elif args["slot_lang"]=="question":
                             slot_lang = description[slot]["question"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}"
                         elif args["slot_lang"]=="slottype":
                             slot_lang = description[slot]["slottype"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}?"
                         else:
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot}"
 
                         # task2
                         slot_lang2 = description[slot]["text2"]
@@ -210,8 +210,8 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                             }
                         data.append(data_detail)
     #print(len(data))
-    for idx in range(len(data)):
-        print(data[idx])
+    #for idx in range(20):
+        #print(data[idx+1000])
     #print("domain_counter", domain_counter)
     return data, slot_temp
 
@@ -255,10 +255,10 @@ def collate_fn_train(data, tokenizer):
     for key in data[0]:
         batch_data[key] = [d[key] for d in data]
 
-    input_batch = tokenizer(batch_data["input_text"], padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
+    input_batch = tokenizer(batch_data["input_text"]+batch_data["input_text2"], padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
     batch_data["encoder_input"] = input_batch["input_ids"]
     batch_data["attention_mask"] = input_batch["attention_mask"]
-    output_batch = tokenizer(batch_data["output_text"], padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
+    output_batch = tokenizer(batch_data["output_text"]+batch_data["output_text2"], padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
     # replace the padding id to -100 for cross-entropy
     output_batch['input_ids'].masked_fill_(output_batch['input_ids']==tokenizer.pad_token_id, -100)
     batch_data["decoder_output"] = output_batch['input_ids']

@@ -159,21 +159,21 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
 
                         if args["slot_lang"]=="human":
                             slot_lang = description[slot]["description_human"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}?"
                         elif args["slot_lang"]=="naive":
                             slot_lang = description[slot]["naive"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}?"
                         elif args["slot_lang"]=="value":
                             slot_lang = description[slot]["naive"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}"
                         elif args["slot_lang"]=="question":
                             slot_lang = description[slot]["question"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}"
                         elif args["slot_lang"]=="slottype":
                             slot_lang = description[slot]["slottype"]
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot_lang}?"
                         else:
-                            input_text = utterance + history_text_expend
+                            input_text = utterance + history_text_expend + f" {tokenizer.sep_token} {slot}"
 
                         # task2
                         slot_lang2 = description[slot]["text2"]
