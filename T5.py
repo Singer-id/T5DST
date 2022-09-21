@@ -92,7 +92,7 @@ class DST_Seq2Seq(pl.LightningModule):
 
 def train(args, *more):
     args = vars(args)
-    args["model_name"] = args["model_checkpoint"]+args["model_name"]+"_except_domain_"+args["except_domain"]+ "_slotlang_" +str(args["slot_lang"]) + "_lr_" +str(args["lr"]) + "_epoch_" + str(args["n_epochs"]) + "_seed_" + str(args["seed"])
+    args["model_name"] = args["model_checkpoint"]+args["model_name"]+"_except_domain_"+args["except_domain"]+ "_train_batch_size_" + str(args["train_batch_size"]) + "_epoch_" + str(args["n_epochs"]) + "_seed_" + str(args["seed"]) + "_auxiliary_task_ratio_" + str(args["auxiliary_task_ratio"])
     # train!
     seed_everything(args["seed"])
 
