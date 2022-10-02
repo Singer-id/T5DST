@@ -40,7 +40,7 @@ def finetune_data(args, path_name):
     with open(path_name) as f:
         dials = json.load(f)
         for dial_dict in dials:
-            if args["only_domain"] != "none" and args["only_domain"] in dial_dict["domains"]:
+            if args["except_domain"] != "none" and args["except_domain"] in dial_dict["domains"]:
                 target_data.append(dial_dict)
 
             random.Random(args["seed"]).shuffle(dials)
@@ -158,54 +158,39 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                         slot_lang = description[slot]["slottype"]
                         input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}?"
 
-                        if args['base']:
-                            data_detail = {
-                                "ID": dial_dict["dial_id"],
-                                "domains": dial_dict["domains"],
-                                "turn_id": turn_id,
-                                "dialog_history": dialog_history,
-                                "turn_belief": turn_belief_list,
-                                "intput_text": input_text,
-                                "output_text": output_text,
-                                "slot_text": slot_text,
-                                "value_text": value_text,
-                                "value_list": description[slot]["values"]
-                            }
-                            data.append(data_detail)
+                        # task2
+                        slot_lang2 = description[slot]["text2"]
+                        input_text2 = dialog_history + f" {tokenizer.sep_token} {slot_lang2}"
+
+                        if turn_id == 0:
+                            previous_value_text = 'none'
                         else:
-                            # task2
-                            slot_lang2 = description[slot]["text2"]
-                            input_text2 = dialog_history + f" {tokenizer.sep_token} {slot_lang2}"
+                            previous_value_text = data[-1 * len(slot_temp)]["value_text"]
 
-                            if turn_id == 0:
-                                previous_value_text = 'none'
-                            else:
-                                previous_value_text = data[-1 * len(slot_temp)]["value_text"]
+                        if previous_value_text == value_text:
+                            output_text2 = "remain"
+                        elif previous_value_text == 'none':
+                            output_text2 = "generate"
+                        elif value_text == 'none':
+                            output_text2 = "delete"
+                        else:
+                            output_text2 = "change"
 
-                            if previous_value_text == value_text:
-                                output_text2 = "remain"
-                            elif previous_value_text == 'none':
-                                output_text2 = "generate"
-                            elif value_text == 'none':
-                                output_text2 = "delete"
-                            else:
-                                output_text2 = "change"
-
-                            data_detail = {
-                                "ID":dial_dict["dial_id"],
-                                "domains":dial_dict["domains"],
-                                "turn_id":turn_id,
-                                "dialog_history":dialog_history,
-                                "turn_belief":turn_belief_list,
-                                "intput_text":input_text,
-                                "output_text":output_text,
-                                "slot_text":slot_text,
-                                "value_text":value_text,
-                                "value_list":description[slot]["values"],
-                                "intput_text2":input_text2,
-                                "output_text2":output_text2
-                                }
-                            data.append(data_detail)
+                        data_detail = {
+                            "ID":dial_dict["dial_id"],
+                            "domains":dial_dict["domains"],
+                            "turn_id":turn_id,
+                            "dialog_history":dialog_history,
+                            "turn_belief":turn_belief_list,
+                            "intput_text":input_text,
+                            "output_text":output_text,
+                            "slot_text":slot_text,
+                            "value_text":value_text,
+                            "value_list":description[slot]["values"],
+                            "intput_text2":input_text2,
+                            "output_text2":output_text2
+                            }
+                        data.append(data_detail)
     # print(len(data))
     for idx in range(10):
         print(data[idx])
@@ -246,53 +231,21 @@ def collate_fn(data, tokenizer):
 
     return batch_data
 
-def collate_fn_train(data, tokenizer, args):
+def collate_fn_train(data, tokenizer):
     batch_data = {}
     for key in data[0]:
         batch_data[key] = [d[key] for d in data]
 
-    l0 = len(data)
-    l1 = int(args["train_batch_size"] * args["auxiliary_task_ratio"])
-    if l0 > l1:
-        task2_random = random.sample(range(0, l0), l1)
-        task2_random_input  = [batch_data["intput_text2"][i] for i in task2_random]
-        task2_random_output = [batch_data["output_text2"][i] for i in task2_random]
-        input_batch = tokenizer(batch_data["intput_text"] + task2_random_input, padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
-        output_batch = tokenizer(batch_data["output_text"] + task2_random_output, padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
-    else:
-        input_batch = tokenizer(batch_data["intput_text"] + batch_data["intput_text2"], padding=True, return_tensors="pt",add_special_tokens=False, verbose=False)
-        output_batch = tokenizer(batch_data["output_text"] + batch_data["output_text2"], padding=True, return_tensors="pt",add_special_tokens=False, return_attention_mask=False)
-
+    input_batch = tokenizer(batch_data["intput_text"] + batch_data["intput_text2"], padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
     batch_data["encoder_input"] = input_batch["input_ids"]
     batch_data["attention_mask"] = input_batch["attention_mask"]
+    output_batch = tokenizer(batch_data["output_text"] + batch_data["output_text2"], padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
+    # replace the padding id to -100 for cross-entropy
     output_batch['input_ids'].masked_fill_(output_batch['input_ids']==tokenizer.pad_token_id, -100)
     batch_data["decoder_output"] = output_batch['input_ids']
 
     return batch_data
 
-def collate_fn_train_task2first(data, tokenizer, args):
-    batch_data = {}
-    for key in data[0]:
-        batch_data[key] = [d[key] for d in data]
-
-    l0 = len(data)
-    l1 = int(args["train_batch_size"] * args["auxiliary_task_ratio"])
-    if l0 > l1:
-        task2_random = random.sample(range(0, l0), l1)
-        task2_random_input  = [batch_data["intput_text2"][i] for i in task2_random]
-        task2_random_output = [batch_data["output_text2"][i] for i in task2_random]
-        input_batch = tokenizer(task2_random_input + batch_data["intput_text"], padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
-        output_batch = tokenizer(task2_random_output + batch_data["output_text"], padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
-    else:
-        input_batch = tokenizer(batch_data["intput_text2"] + batch_data["intput_text"], padding=True, return_tensors="pt",add_special_tokens=False, verbose=False)
-        output_batch = tokenizer(batch_data["output_text2"] + batch_data["output_text"], padding=True, return_tensors="pt",add_special_tokens=False, return_attention_mask=False)
-
-    batch_data["encoder_input"] = input_batch["input_ids"]
-    batch_data["attention_mask"] = input_batch["attention_mask"]
-    output_batch['input_ids'].masked_fill_(output_batch['input_ids']==tokenizer.pad_token_id, -100)
-    batch_data["decoder_output"] = output_batch['input_ids']
-
-    return batch_data
 
 def prepare_data(args, tokenizer):
     path_train = 'data/train_dials.json'
@@ -317,12 +270,7 @@ def prepare_data(args, tokenizer):
         test_loader = DataLoader(test_dataset, batch_size=args["test_batch_size"], shuffle=False, collate_fn=partial(gpt_collate_fn, tokenizer=tokenizer), num_workers=16)
         dev_loader = DataLoader(dev_dataset, batch_size=args["dev_batch_size"], shuffle=False, collate_fn=partial(gpt_collate_fn, tokenizer=tokenizer), num_workers=16)
     else:
-        if args['base']:
-            train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)
-        elif args['task2first']:
-            train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train_task2first, tokenizer=tokenizer, args=args), num_workers=16)
-        else:
-            train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train, tokenizer=tokenizer, args = args), num_workers=16)
+        train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train, tokenizer=tokenizer), num_workers=16)
         test_loader = DataLoader(test_dataset, batch_size=args["test_batch_size"], shuffle=False, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)
         dev_loader = DataLoader(dev_dataset, batch_size=args["dev_batch_size"], shuffle=False, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)
     fewshot_loader_dev=None

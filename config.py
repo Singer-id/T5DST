@@ -29,6 +29,8 @@ def get_args():
     parser.add_argument("--semi", action='store_true')
     parser.add_argument("--mode", type=str, default="train")
     parser.add_argument("--auxiliary_task_ratio", type=float, default=1.0, help="auxiliary task data amount / main task data amount, use 1.0, 0.5, 0.375, 0.25, 0.125")
+    parser.add_argument("--base", action='store_true')
+    parser.add_argument("--task2first", action='store_true')
 
     args = parser.parse_args()
     return args

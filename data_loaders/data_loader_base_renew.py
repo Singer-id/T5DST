@@ -28,12 +28,24 @@ class DSTDataset(Dataset):
         item_info = self.data[index]
         if self.args["slot_lang"] == "value":
             random.shuffle(item_info["value_list"])
-            item_info["input_text"] += " is " + " or ".join(item_info["value_list"]) + " or none?"
+            item_info["intput_text"] += " is " + " or ".join(item_info["value_list"]) + " or none?"
         return item_info
 
     def __len__(self):
         return len(self.data)
 
+
+def finetune_data(args, path_name):
+    target_data=[]
+    with open(path_name) as f:
+        dials = json.load(f)
+        for dial_dict in dials:
+            if args["except_domain"] != "none" and args["except_domain"] in dial_dict["domains"]:
+                target_data.append(dial_dict)
+
+            random.Random(args["seed"]).shuffle(dials)
+            target_data = target_data[:int(len(dials)*args["fewshot"])]
+    return target_data
 
 
 def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
@@ -46,8 +58,7 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
         dials = json.load(f)
 
         if dataset=="train" and args["fewshot"]>0:
-            random.Random(args["seed"]).shuffle(dials)
-            dials = dials[:int(len(dials)*args["fewshot"])]
+            dials = finetune_data(args, path_name)
 
         for dial_dict in dials:
             dialog_history = ""
@@ -70,7 +81,7 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
             # Reading data
             for ti, turn in enumerate(dial_dict["turns"]):
                 turn_id = ti
-                #print("turn_id:" + str(ti))
+
                 # accumulate dialogue utterances
                 dialog_history +=  (" System: " + turn["system"] + " User: " + turn["user"])
                 if args["fix_label"]:
@@ -97,6 +108,7 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                         slot_temp = [k for k in SLOTS if args["only_domain"] in k]
                         slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["only_domain"] in k])
 
+
                 turn_belief_list = [str(k)+'-'+str(v) for k,v in slot_values.items()]
 
                 # baseline gpt have different preprocessing, e.g., output: (slot1-value1, slot2-value2, slot3-value3, ...)
@@ -121,7 +133,7 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                             "turn_id":turn_id,
                             "dialog_history":dialog_history,
                             "turn_belief":turn_belief_list,
-                            "input_text":input_text,
+                            "intput_text":input_text,
                             "output_text":output_text,
                             "slot_text":slot_text,
                             "value_text":value_text
@@ -129,19 +141,13 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                         data.append(data_detail)
 
                 else:
-                    #slot_temp_len = len(slot_temp)
-                    new_slot_temp = []
                     for slot in slot_temp:
+
                         # skip unrelevant slots for out of domain setting
                         if args["except_domain"] != "none" and dataset !="test":
-                            if slot.split("-")[0] in dial_dict["domains"]:
-                                new_slot_temp.append(slot)
-                    #print("slot_temp" + str(slot_temp))
-                    #print("new_slot_temp" + str(new_slot_temp))
-                    if new_slot_temp:
-                        slot_temp = new_slot_temp
+                            if slot.split("-")[0] not in dial_dict["domains"]:
+                                continue
 
-                    for slot in slot_temp:
                         output_text = slot_values.get(slot, 'none').strip() + f" {tokenizer.eos_token}"
                         slot_text = slot
                         value_text = slot_values.get(slot, 'none').strip()
@@ -164,45 +170,22 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                         else:
                             input_text = dialog_history + f" {tokenizer.sep_token} {slot}"
 
-                        # task2
-                        slot_lang2 = description[slot]["text2"]
-                        input_text2 = dialog_history + f" {tokenizer.sep_token} {slot_lang2}"  # 这个输入有问题，应该是history + utterance + prompt?
-
-                        if turn_id == 0:  # 9.22更改重要bug，turn 0 的标签
-                            previous_value_text = 'none'
-                        else:
-                            previous_value_text = data[-1 * len(slot_temp)]["value_text"]
-
-                        #print(previous_value_text)
-                        #print(value_text)
-
-                        if previous_value_text == value_text:
-                            output_text2 = "remain"
-                        elif previous_value_text == 'none':
-                            output_text2 = "generate"
-                        elif value_text == 'none':
-                            output_text2 = "delete"
-                        else:
-                            output_text2 = "change"
-
                         data_detail = {
                             "ID":dial_dict["dial_id"],
                             "domains":dial_dict["domains"],
                             "turn_id":turn_id,
                             "dialog_history":dialog_history,
                             "turn_belief":turn_belief_list,
-                            "input_text":input_text,
-                            "input_text2":input_text2,
+                            "intput_text":input_text,
                             "output_text":output_text,
-                            "output_text2":output_text2,
                             "slot_text":slot_text,
                             "value_text":value_text,
                             "value_list":description[slot]["values"]
                             }
                         data.append(data_detail)
-    #print(len(data))
-    #for idx in range(20):
-        #print(data[idx])
+    # print(len(data))
+    for idx in range(10):
+        print(data[idx])
     print("domain_counter", domain_counter)
     return data, slot_temp
 
@@ -230,30 +213,10 @@ def collate_fn(data, tokenizer):
     for key in data[0]:
         batch_data[key] = [d[key] for d in data]
 
-    input_batch = tokenizer(batch_data["input_text"], padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
+    input_batch = tokenizer(batch_data["intput_text"], padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
     batch_data["encoder_input"] = input_batch["input_ids"]
     batch_data["attention_mask"] = input_batch["attention_mask"]
     output_batch = tokenizer(batch_data["output_text"], padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
-    # replace the padding id to -100 for cross-entropy
-    output_batch['input_ids'].masked_fill_(output_batch['input_ids']==tokenizer.pad_token_id, -100)
-    batch_data["decoder_output"] = output_batch['input_ids']
-
-    return batch_data
-
-
-def collate_fn_train(data, tokenizer, args):
-    batch_data = {}
-    for key in data[0]:
-        batch_data[key] = [d[key] for d in data]
-
-    task2_random = random.sample(range(0, args["train_batch_size"]), (int(args["train_batch_size"] * args["auxiliary_task_ratio"])))
-    task2_random_input  = [batch_data["input_text2"][i] for i in task2_random]
-    task2_random_output = [batch_data["output_text2"][i] for i in task2_random]
-
-    input_batch = tokenizer(batch_data["input_text"] + task2_random_input, padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
-    batch_data["encoder_input"] = input_batch["input_ids"]
-    batch_data["attention_mask"] = input_batch["attention_mask"]
-    output_batch = tokenizer(batch_data["output_text"] + task2_random_output, padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
     # replace the padding id to -100 for cross-entropy
     output_batch['input_ids'].masked_fill_(output_batch['input_ids']==tokenizer.pad_token_id, -100)
     batch_data["decoder_output"] = output_batch['input_ids']
@@ -284,7 +247,7 @@ def prepare_data(args, tokenizer):
         test_loader = DataLoader(test_dataset, batch_size=args["test_batch_size"], shuffle=False, collate_fn=partial(gpt_collate_fn, tokenizer=tokenizer), num_workers=16)
         dev_loader = DataLoader(dev_dataset, batch_size=args["dev_batch_size"], shuffle=False, collate_fn=partial(gpt_collate_fn, tokenizer=tokenizer), num_workers=16)
     else:
-        train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train, tokenizer=tokenizer, args=args), num_workers=16, drop_last= True)
+        train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)
         test_loader = DataLoader(test_dataset, batch_size=args["test_batch_size"], shuffle=False, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)
         dev_loader = DataLoader(dev_dataset, batch_size=args["dev_batch_size"], shuffle=False, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)
     fewshot_loader_dev=None

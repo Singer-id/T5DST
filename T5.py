@@ -92,7 +92,7 @@ class DST_Seq2Seq(pl.LightningModule):
 
 def train(args, *more):
     args = vars(args)
-    args["model_name"] = args["model_checkpoint"]+args["model_name"]+"_except_domain_"+args["except_domain"]+ "_train_batch_size_" + str(args["train_batch_size"]) + "_epoch_" + str(args["n_epochs"]) + "_seed_" + str(args["seed"]) + "_auxiliary_task_ratio_" + str(args["auxiliary_task_ratio"])
+    args["model_name"] = args["model_checkpoint"] + args["model_name"] + "_except_domain_" + args["except_domain"] + "_lr_" +str(args["lr"]) + "_epoch_" + str(args["n_epochs"]) + "_seed_" + str(args["seed"]) + "_batch_size_" + str(args["train_batch_size"]) +"_auxiliary_task_" + str(args["auxiliary_task_ratio"]) + "_base_" + str(args["base"]) + '_task2first_' + str(args["task2first"])
     # train!
     seed_everything(args["seed"])
 
@@ -221,7 +221,7 @@ def fine_tune(args, *more):
                     default_root_dir=args["model_checkpoint"],
                     accumulate_grad_batches=args["gradient_accumulation_steps"],
                     gradient_clip_val=args["max_norm"],
-                    max_epochs=20,
+                    max_epochs=5,
                     callbacks=[pl.callbacks.EarlyStopping(monitor='val_loss',min_delta=0.00, patience=8,verbose=False, mode='min')],
                     gpus=args["GPU"],
                     deterministic=True,

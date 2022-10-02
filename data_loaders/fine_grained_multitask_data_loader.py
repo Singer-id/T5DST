@@ -50,7 +50,7 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
             dials = dials[:int(len(dials)*args["fewshot"])]
 
         for dial_dict in dials:
-            slot_value_history = []
+            dialog_history = ""
 
             # Counting domains
             for domain in dial_dict["domains"]:
@@ -71,11 +71,14 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
             for ti, turn in enumerate(dial_dict["turns"]):
                 turn_id = ti
                 #print("turn_id:" + str(ti))
-
+                # accumulate dialogue utterances
+                dialog_history +=  (" System: " + turn["system"] + " User: " + turn["user"])
                 if args["fix_label"]:
                     slot_values = fix_general_label_error(turn["state"]["slot_values"],SLOTS)
                 else:
                     slot_values = turn["state"]["slot_values"]
+                # input: dialogue history + slot
+                # output: value
 
                 # Generate domain-dependent slot list
                 slot_temp = SLOTS
@@ -95,20 +98,6 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                         slot_values = OrderedDict([(k, v) for k, v in slot_values.items() if args["only_domain"] in k])
 
                 turn_belief_list = [str(k)+'-'+str(v) for k,v in slot_values.items()]
-
-                # input: history + utterance + slot
-                # output: value
-
-                #print("slot_values")
-                #print(slot_values)
-                slot_value_history.append(slot_values)
-                #print(slot_value_history)
-                if ti != 0:
-                    history = slot_value_history[ti - 1]
-                else:
-                    history = {}
-                #print(history)
-                utterance = (" System: " + turn["system"] + " User: " + turn["user"])
 
                 # baseline gpt have different preprocessing, e.g., output: (slot1-value1, slot2-value2, slot3-value3, ...)
                 if "gpt" in args["model_name"]:
@@ -140,64 +129,62 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                         data.append(data_detail)
 
                 else:
+                    new_slot_temp = []
                     for slot in slot_temp:
                         # skip unrelevant slots for out of domain setting
                         if args["except_domain"] != "none" and dataset != "test":
-                            if slot.split("-")[0] not in dial_dict["domains"]:
-                                continue
+                            if slot.split("-")[0] in dial_dict["domains"]:
+                                new_slot_temp.append(slot)
 
+                    if args["except_domain"] != "none" and dataset != "test":
+                        slot_temp = new_slot_temp
+
+                    for slot in slot_temp:
                         output_text = slot_values.get(slot, 'none').strip() + f" {tokenizer.eos_token}"
                         slot_text = slot
                         value_text = slot_values.get(slot, 'none').strip()
-                        history_value_text = history.get(slot, 'none').strip()
-
-                        history_text_expend = ""
-                        for key, value in history.items():
-                            history_text_expend += (" " + key + "-" + value)
-
-                        #print("history_text_expend:"+history_text_expend)
 
                         if args["slot_lang"]=="human":
                             slot_lang = description[slot]["description_human"]
-                            input_text = utterance + history_text_expend
+                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}?"
                         elif args["slot_lang"]=="naive":
                             slot_lang = description[slot]["naive"]
-                            input_text = utterance + history_text_expend
+                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}?"
                         elif args["slot_lang"]=="value":
                             slot_lang = description[slot]["naive"]
-                            input_text = utterance + history_text_expend
+                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}"
                         elif args["slot_lang"]=="question":
                             slot_lang = description[slot]["question"]
-                            input_text = utterance + history_text_expend
+                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}"
                         elif args["slot_lang"]=="slottype":
                             slot_lang = description[slot]["slottype"]
-                            input_text = utterance + history_text_expend
+                            input_text = dialog_history + f" {tokenizer.sep_token} {slot_lang}?"
                         else:
-                            input_text = utterance + history_text_expend
+                            input_text = dialog_history + f" {tokenizer.sep_token} {slot}"
 
                         # task2
                         slot_lang2 = description[slot]["text2"]
-                        input_text2 = utterance + f" {tokenizer.sep_token} {slot_lang2}"
+                        input_text2 = dialog_history + f" {tokenizer.sep_token} {slot_lang2}"
 
                         if turn_id == 0:
-                            output_text2 = "remain"
+                            previous_value_text = 'none'
                         else:
-                            if history_value_text == value_text:
-                                output_text2 = "remain"
-                            elif history_value_text == 'none':
-                                output_text2 = "generate"
-                            elif value_text == 'none':
-                                output_text2 = "delete"
-                            else:
-                                output_text2 = "change"
+                            previous_value_text = data[-1 * len(slot_temp)]["value_text"]
+
+                        if previous_value_text == value_text:
+                            output_text2 = "remain"
+                        elif previous_value_text == 'none':
+                            output_text2 = "generate"
+                        elif value_text == 'none':
+                            output_text2 = "delete"
+                        else:
+                            output_text2 = "change"
 
                         data_detail = {
                             "ID":dial_dict["dial_id"],
                             "domains":dial_dict["domains"],
                             "turn_id":turn_id,
-                            "history":history,
-                            "history_text_expend":history_text_expend,
-                            "utterance":utterance,
+                            "dialog_history":dialog_history,
                             "turn_belief":turn_belief_list,
                             "input_text":input_text,
                             "input_text2":input_text2,
@@ -205,14 +192,13 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                             "output_text2":output_text2,
                             "slot_text":slot_text,
                             "value_text":value_text,
-                            "history_value_text":history_value_text,
                             "value_list":description[slot]["values"]
                             }
                         data.append(data_detail)
     #print(len(data))
-    for idx in range(len(data)):
-        print(data[idx])
-    #print("domain_counter", domain_counter)
+    #for idx in range(20):
+        #print(data[idx])
+    print("domain_counter", domain_counter)
     return data, slot_temp
 
 
@@ -250,16 +236,25 @@ def collate_fn(data, tokenizer):
     return batch_data
 
 
-def collate_fn_train(data, tokenizer):
+def collate_fn_train(data, tokenizer, args):
     batch_data = {}
     for key in data[0]:
         batch_data[key] = [d[key] for d in data]
 
-    input_batch = tokenizer(batch_data["input_text"], padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
+    l0 = len(data)
+    l1 = int(args["train_batch_size"] * args["auxiliary_task_ratio"])
+    if l0 > l1:
+        task2_random = random.sample(range(0, l0), l1)
+        task2_random_input  = [batch_data["input_text2"][i] for i in task2_random]
+        task2_random_output = [batch_data["output_text2"][i] for i in task2_random]
+        input_batch = tokenizer(batch_data["input_text"] + task2_random_input, padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
+        output_batch = tokenizer(batch_data["output_text"] + task2_random_output, padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
+    else:
+        input_batch = tokenizer(batch_data["input_text"] + batch_data["input_text2"], padding=True, return_tensors="pt",add_special_tokens=False, verbose=False)
+        output_batch = tokenizer(batch_data["output_text"] + batch_data["output_text2"], padding=True, return_tensors="pt",add_special_tokens=False, return_attention_mask=False)
+
     batch_data["encoder_input"] = input_batch["input_ids"]
     batch_data["attention_mask"] = input_batch["attention_mask"]
-    output_batch = tokenizer(batch_data["output_text"], padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
-    # replace the padding id to -100 for cross-entropy
     output_batch['input_ids'].masked_fill_(output_batch['input_ids']==tokenizer.pad_token_id, -100)
     batch_data["decoder_output"] = output_batch['input_ids']
 
@@ -289,7 +284,7 @@ def prepare_data(args, tokenizer):
         test_loader = DataLoader(test_dataset, batch_size=args["test_batch_size"], shuffle=False, collate_fn=partial(gpt_collate_fn, tokenizer=tokenizer), num_workers=16)
         dev_loader = DataLoader(dev_dataset, batch_size=args["dev_batch_size"], shuffle=False, collate_fn=partial(gpt_collate_fn, tokenizer=tokenizer), num_workers=16)
     else:
-        train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train, tokenizer=tokenizer), num_workers=16)
+        train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train, tokenizer=tokenizer, args=args), num_workers=16, drop_last= True)
         test_loader = DataLoader(test_dataset, batch_size=args["test_batch_size"], shuffle=False, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)
         dev_loader = DataLoader(dev_dataset, batch_size=args["dev_batch_size"], shuffle=False, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)
     fewshot_loader_dev=None
