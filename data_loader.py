@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates
 
 import json
+import itertools
 import torch
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 import ast
@@ -207,8 +208,8 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                                 }
                             data.append(data_detail)
     # print(len(data))
-    for idx in range(10):
-        print(data[idx])
+    #for idx in range(10):
+        #print(data[idx])
     print("domain_counter", domain_counter)
     return data, slot_temp
 
@@ -269,7 +270,7 @@ def collate_fn_train(data, tokenizer, args):
     batch_data["decoder_output"] = output_batch['input_ids']
 
     return batch_data
-
+'''
 def collate_fn_train_task2first(data, tokenizer, args):
     batch_data = {}
     for key in data[0]:
@@ -293,13 +294,72 @@ def collate_fn_train_task2first(data, tokenizer, args):
     batch_data["decoder_output"] = output_batch['input_ids']
 
     return batch_data
+'''
+def collate_fn_train_task2first(data, tokenizer, args):  ##filter
+    batch_data = {}
+    for key in data[0]:
+        batch_data[key] = [d[key] for d in data]
+
+    input_text2 = []
+    output_text2 = []
+
+    for i in range(len(batch_data["intput_text2"])):
+        if batch_data["output_text2"][i] != 'remain':
+            input_text2.append(batch_data["intput_text2"][i])
+            output_text2.append(batch_data["output_text2"][i])
+    #print(input_text2)
+    #print(output_text2)
+
+    input_batch = tokenizer(input_text2 + batch_data["intput_text"], padding=True, return_tensors="pt",add_special_tokens=False, verbose=False)
+    output_batch = tokenizer(output_text2 + batch_data["output_text"], padding=True, return_tensors="pt",add_special_tokens=False, return_attention_mask=False)
+
+    batch_data["encoder_input"] = input_batch["input_ids"]
+    batch_data["attention_mask"] = input_batch["attention_mask"]
+    output_batch['input_ids'].masked_fill_(output_batch['input_ids']==tokenizer.pad_token_id, -100)
+    batch_data["decoder_output"] = output_batch['input_ids']
+
+    return batch_data
+
+def collate_fn_train_2phase(data, tokenizer, args):
+    batch_data = {}
+    for key in data[0]:
+        batch_data[key] = [d[key] for d in data]
+
+    l0 = len(data)
+    l1 = int(args["train_batch_size"] * args["auxiliary_task_ratio"])
+    if l0 > l1:
+        task2_random = random.sample(range(0, l0), l1)
+        task2_random_input  = [batch_data["intput_text2"][i] for i in task2_random]
+        task2_random_output = [batch_data["output_text2"][i] for i in task2_random]
+
+        input = list(itertools.chain.from_iterable(zip(task2_random_input, batch_data["intput_text"])))
+        output = list(itertools.chain.from_iterable(zip(task2_random_output, batch_data["output_text"])))
+        input_batch = tokenizer(input, padding=True, return_tensors="pt", add_special_tokens=False, verbose=False)
+        output_batch = tokenizer(output, padding=True, return_tensors="pt", add_special_tokens=False, return_attention_mask=False)
+    else:
+        input = list(itertools.chain.from_iterable(zip(batch_data["intput_text2"], batch_data["intput_text"])))
+        output = list(itertools.chain.from_iterable(zip(batch_data["output_text2"], batch_data["output_text"])))
+        input_batch = tokenizer(input, padding=True, return_tensors="pt",add_special_tokens=False, verbose=False)
+        output_batch = tokenizer(output, padding=True, return_tensors="pt",add_special_tokens=False, return_attention_mask=False)
+
+    #print(input)
+    #print(output)
+
+    batch_data["encoder_input"] = input_batch["input_ids"]
+    batch_data["attention_mask"] = input_batch["attention_mask"]
+    output_batch['input_ids'].masked_fill_(output_batch['input_ids']==tokenizer.pad_token_id, -100)
+    batch_data["decoder_output"] = output_batch['input_ids']
+
+    return batch_data
 
 def prepare_data(args, tokenizer):
     path_train = 'data/train_dials.json'
     path_dev = 'data/dev_dials.json'
     path_test = 'data/test_dials.json'
 
-    ontology = json.load(open("data/multi-woz/MULTIWOZ2 2/ontology.json", 'r'))
+    ontology = json.load(open("data/multi-woz/MULTIWOZ2 2/ontology.json", 'r')) #2.0
+    #ontology = json.load(open("data/mwz2.1/ontology.json", 'r')) #2.1
+
     ALL_SLOTS = get_slot_information(ontology)
     description = json.load(open("utils/slot_description.json", 'r'))
 
@@ -320,7 +380,10 @@ def prepare_data(args, tokenizer):
         if args['base']:
             train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)
         elif args['task2first']:
-            train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train_task2first, tokenizer=tokenizer, args=args), num_workers=16)
+            if args['2phase']:
+                train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train_2phase, tokenizer=tokenizer, args=args), num_workers=16)
+            else:
+                train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train_task2first, tokenizer=tokenizer, args=args), num_workers=16)
         else:
             train_loader = DataLoader(train_dataset, batch_size=args["train_batch_size"], shuffle=True, collate_fn=partial(collate_fn_train, tokenizer=tokenizer, args = args), num_workers=16)
         test_loader = DataLoader(test_dataset, batch_size=args["test_batch_size"], shuffle=False, collate_fn=partial(collate_fn, tokenizer=tokenizer), num_workers=16)

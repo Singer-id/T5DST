@@ -40,7 +40,8 @@ for domain_slot in ontology:
 for domain_slot in ontology:
     domain, slot = domain_slot.split("-")
     # ontology[domain_slot]["text2"] = f"Does the value of {slot} of the {domain} change? Choose Yes or No."  # first commit
-    ontology[domain_slot]["text2"] = f"What is the status of the {slot} of the {domain}? Choose generate, delete, replace or remain."
+    # ontology[domain_slot]["text2"] = f"What is the status of the {slot} of the {domain}? Choose generate, delete, replace or remain."
+    ontology[domain_slot]["text2"] = f"What is the status of the {slot} of the {domain}? Choose generate, delete, or replace."
 
 # Slot Type
 for domain_slot in ontology:
