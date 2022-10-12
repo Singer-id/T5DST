@@ -270,7 +270,7 @@ def collate_fn_train(data, tokenizer, args):
     batch_data["decoder_output"] = output_batch['input_ids']
 
     return batch_data
-'''
+
 def collate_fn_train_task2first(data, tokenizer, args):
     batch_data = {}
     for key in data[0]:
@@ -319,7 +319,7 @@ def collate_fn_train_task2first(data, tokenizer, args):  ##filter
     batch_data["decoder_output"] = output_batch['input_ids']
 
     return batch_data
-
+'''
 def collate_fn_train_2phase(data, tokenizer, args):
     batch_data = {}
     for key in data[0]:
