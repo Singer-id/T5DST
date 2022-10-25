@@ -13,7 +13,7 @@
       <paths name="ubuntu">
         <serverdata>
           <mappings>
-            <mapping deploy="/code/T5DST" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/code/T5DST_2_1" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
