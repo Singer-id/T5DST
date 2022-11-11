@@ -190,7 +190,8 @@ def read_data(args, path_name, SLOTS, tokenizer, description, dataset=None):
                             elif value_text == 'none':
                                 output_text2 = "delete"
                             else:
-                                output_text2 = "change"
+                                #output_text2 = "change" #11.11发现标签错误
+                                output_text2 = "replace"
 
                             data_detail = {
                                 "ID":dial_dict["dial_id"],
